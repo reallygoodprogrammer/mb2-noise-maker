@@ -11,6 +11,8 @@ use microbit::{
     pac::{self, TIMER1, TIMER2, interrupt},
 };
 
+use crate::rand::RAND;
+
 const BLANK: [[u8; 5]; 5] = [
     [0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0],
@@ -18,6 +20,9 @@ const BLANK: [[u8; 5]; 5] = [
     [0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0],
 ];
+
+const IDLE_DELAY: u32 = 140000;
+const RUNNING_DELAY: u32 = 80000;
 
 static DISPLAY: Mutex<RefCell<Option<Display>>> = Mutex::new(RefCell::new(None));
 
@@ -50,7 +55,7 @@ impl Display {
     pub fn init(dtimer: TIMER1, ctimer: TIMER2, pins: DisplayPins) {
         let mut display = nonblocking::Display::new(dtimer, pins);
         let mut timer = Timer::new(ctimer);
-        let delay = 140000u32;
+        let delay = IDLE_DELAY;
         display.show(&nonblocking::GreyscaleImage::new(&[
             [9, 0, 0, 0, 0],
             [0, 0, 0, 0, 0],
@@ -68,7 +73,7 @@ impl Display {
             *DISPLAY.borrow(cs).borrow_mut() = Some(Self {
                 display,
                 timer,
-                position: [(0,0); 5],
+                position: [(0, 0); 5],
                 max: 4,
                 delay,
                 mode: Mode::Idle,
@@ -84,7 +89,7 @@ impl Display {
                 match d.mode {
                     Mode::Idle => {
                         for i in 0..d.max {
-                            d.position[i] = d.position[i+1];
+                            d.position[i] = d.position[i + 1];
                         }
                         d.position[d.max] = match (d.position[d.max].0, d.position[d.max].1) {
                             (4, 4) => (0, 0),
@@ -102,10 +107,33 @@ impl Display {
                                 _ => 0,
                             };
                         }
+                        d.display
+                            .show(&nonblocking::GreyscaleImage::new(&next_frame));
+                    }
+                    Mode::Running => {
+                        if let Some(rng) = RAND.borrow(cs).borrow_mut().as_mut() {
+                            for i in 0..d.max {
+                                d.position[i] = d.position[i + 1];
+                            }
+                            let rand_val = rng.rand_u8(0, 24);
+                            let x = rand_val % 5;
+                            let y = (rand_val - x) / 5;
+                            d.position[d.max] = (x, y);
+                        }
 
-                        d.display.show(&nonblocking::GreyscaleImage::new(&next_frame));
-                    },
-                    Mode::Running => (),
+                        for (i, p) in d.position.iter().enumerate() {
+                            next_frame[p.0 as usize][p.1 as usize] = match i {
+                                0 => 1,
+                                1 => 3,
+                                2 => 5,
+                                3 => 7,
+                                4 => 9,
+                                _ => 0,
+                            };
+                        }
+                        d.display
+                            .show(&nonblocking::GreyscaleImage::new(&next_frame));
+                    }
                 }
 
                 d.timer.reset_event();
@@ -119,6 +147,7 @@ impl Display {
         free(|cs| {
             if let Some(d) = DISPLAY.borrow(cs).borrow_mut().as_mut() {
                 d.mode = Mode::Idle;
+                d.delay = IDLE_DELAY;
             }
         })
     }
@@ -128,11 +157,11 @@ impl Display {
         free(|cs| {
             if let Some(d) = DISPLAY.borrow(cs).borrow_mut().as_mut() {
                 d.mode = Mode::Running;
+                d.delay = RUNNING_DELAY;
             }
         })
     }
 }
-
 
 #[interrupt]
 fn TIMER1() {
