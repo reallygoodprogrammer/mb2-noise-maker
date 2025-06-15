@@ -1,6 +1,5 @@
 use core::{
     cell::RefCell,
-    iter::Iterator,
     option::Option::{self, None, Some},
 };
 use cortex_m::interrupt::{Mutex, free};
@@ -27,5 +26,9 @@ impl Rand {
 
     pub fn rand_u8(&mut self, low: u8, high: u8) -> u8 {
         (self.rng.generate::<u8>() + low) % high
+    }
+
+    pub fn rand_u32(&mut self, low: u32, high: u32) -> u32 {
+        (self.rng.generate::<u32>() + low) % high
     }
 }

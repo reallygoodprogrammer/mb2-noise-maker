@@ -5,7 +5,12 @@ use embedded_hal::digital::InputPin;
 use microbit::Board;
 use panic_halt as _;
 
-use noiser::{display::Display, notes::Notes, rand::Rand, speaker::Speaker};
+use noiser::{
+    display::Display,
+    notes::{NoteMode, Notes},
+    rand::Rand,
+    speaker::Speaker,
+};
 
 #[entry]
 fn main() -> ! {
@@ -14,6 +19,7 @@ fn main() -> ! {
 
     Rand::init(board.RNG);
     Display::init(board.TIMER1, board.TIMER2, board.display_pins);
+    Notes::init(board.TIMER3);
     Speaker::init(board.speaker_pin, board.PWM0, board.RTC0, board.NVIC);
     Speaker::stop();
 
@@ -24,23 +30,30 @@ fn main() -> ! {
             buttons.button_b.is_low().unwrap(),
             pressed,
         ) {
-            (true, false, false) => {
-                Display::running();
-                pressed = true;
-            }
-            (true, true, true) => {
-                Display::running();
-                pressed = true;
-            }
-            (false, true, true) => {
-                Display::running();
-                pressed = true;
-            }
+            (false, false, false) => (),
             (false, false, true) => {
                 Display::idle();
+                Notes::disable();
+                Speaker::stop();
                 pressed = false;
             }
-            _ => (),
+            (a, b, p) => {
+                if !p {
+                    Display::running();
+                    Speaker::start();
+                    Notes::enable();
+                    pressed = true;
+                    if a {
+                        Notes::mode(NoteMode::RandomNote);
+                    } else {
+                        Notes::mode(NoteMode::LFO);
+                    }
+                }
+
+                if a && b {
+                    Notes::toggle();
+                }
+            }
         }
     }
 }
